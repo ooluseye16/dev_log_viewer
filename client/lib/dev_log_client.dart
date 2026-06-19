@@ -49,7 +49,7 @@
 ///
 /// Options B and C can be combined: add [DevLogInterceptor] for automatic
 /// API traffic and use [AppLog] for manual events.
-library dev_log_client;
+library;
 
 export 'src/log_forwarder.dart';
 export 'src/dev_log_interceptor.dart';

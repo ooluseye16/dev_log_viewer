@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:dev_log_viewer/log_viewer.dart';
+import 'package:dev_log_viewer/dev_log_viewer.dart';
 
 /// Starts the Dev Log Viewer server.
 ///
@@ -50,7 +50,7 @@ void main(List<String> args) async {
     }
   }
 
-  final label = project != null ? '$project' : 'Dev Log Viewer';
+  final label = project ?? 'Dev Log Viewer';
   stdout.writeln('');
   stdout.writeln('  $label  →  http://localhost:$port');
   if (port != 8181) {

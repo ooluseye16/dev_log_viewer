@@ -156,13 +156,13 @@ void _addClientDependency(File pubspecFile, String content) {
   final depsMatch = RegExp(r'^dependencies:', multiLine: true).firstMatch(content);
   if (depsMatch != null) {
     final insertAt = content.indexOf('\n', depsMatch.end) + 1;
-    final patched = content.substring(0, insertAt) + snippet + '\n' + content.substring(insertAt);
+    final patched = '${content.substring(0, insertAt)}$snippet\n${content.substring(insertAt)}';
     pubspecFile.writeAsStringSync(patched);
     return;
   }
 
   // No dependencies block — append one.
-  pubspecFile.writeAsStringSync(content.trimRight() + '\n\ndependencies:\n$snippet\n');
+  pubspecFile.writeAsStringSync('${content.trimRight()}\n\ndependencies:\n$snippet\n');
 }
 
 /// Adds the import and LogForwarder.init() call to main.dart.
@@ -179,7 +179,7 @@ String? _patchMain(String content) {
     final allImports = RegExp(r"^import .+;$", multiLine: true).allMatches(result).toList();
     if (allImports.isNotEmpty) {
       final end = result.indexOf('\n', allImports.last.end) + 1;
-      result = result.substring(0, end) + '$importLine\n' + result.substring(end);
+      result = '${result.substring(0, end)}$importLine\n${result.substring(end)}';
     } else {
       result = '$importLine\n\n$result';
     }

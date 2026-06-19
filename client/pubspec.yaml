@@ -1,12 +1,24 @@
 name: dev_log_client
-description: >
-  Client library for Dev Log Viewer.
-  Provides three drop-in options: raw LogForwarder, a Dio interceptor,
-  and a lightweight AppLog wrapper — use whichever fits your project.
+description: >-
+  Client library for Dev Log Viewer. Forwards structured log entries from a
+  Flutter/Dart app to the dev_log_viewer server running on localhost. Includes
+  a raw forwarder, a zero-config Dio interceptor, and named AppLog shortcuts.
 version: 0.1.0
+repository: https://github.com/ooluseye16/dev_log_viewer
+issue_tracker: https://github.com/ooluseye16/dev_log_viewer/issues
+
+topics:
+  - logging
+  - debug
+  - developer-tools
+  - dio
+  - flutter
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   dio: ^5.0.0
+
+dev_dependencies:
+  lints: ^6.0.0

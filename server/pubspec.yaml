@@ -1,0 +1,17 @@
+name: dev_log_viewer
+description: >
+  Real-time local log viewer for Flutter development.
+  Receives structured log entries from a running app and serves
+  a searchable, filterable web UI on localhost.
+version: 0.1.0
+homepage: https://github.com/your-org/dev_log_viewer
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+
+executables:
+  dev_log_viewer: log_viewer

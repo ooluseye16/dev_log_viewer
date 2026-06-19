@@ -1,0 +1,12 @@
+name: dev_log_client
+description: >
+  Client library for Dev Log Viewer.
+  Provides three drop-in options: raw LogForwarder, a Dio interceptor,
+  and a lightweight AppLog wrapper — use whichever fits your project.
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  dio: ^5.0.0

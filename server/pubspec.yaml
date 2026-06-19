@@ -15,3 +15,4 @@ dependencies:
 
 executables:
   dev_log_viewer: log_viewer
+  dev_log_setup: setup

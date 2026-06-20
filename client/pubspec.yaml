@@ -1,6 +1,6 @@
 name: dev_log_client
 description: Flutter/Dart client for dev_log_viewer. Forwards logs to the local viewer with a Dio interceptor, AppLog shortcuts, and raw log sender.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/ooluseye16/dev_log_viewer
 issue_tracker: https://github.com/ooluseye16/dev_log_viewer/issues
 

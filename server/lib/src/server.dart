@@ -10,16 +10,32 @@ import 'log_store.dart';
 import 'models.dart';
 import 'ui.dart';
 
+/// HTTP server that receives log entries from [dev_log_client] and serves a
+/// real-time web UI on localhost.
+///
+/// ```dart
+/// final server = DevLogServer(port: 8181, project: 'my_app');
+/// await server.start();
+/// // Open http://localhost:8181 in a browser, then start your Flutter app.
+/// ```
 class DevLogServer {
+  /// Creates a server that listens on [port] (default 8181).
+  ///
+  /// [project] is displayed in the browser tab and toolbar so you can tell
+  /// multiple simultaneous viewers apart.
   DevLogServer({this.port = 8181, this.project});
 
+  /// The port this server listens on.
   final int port;
+
+  /// Optional project name shown in the web UI toolbar and browser tab.
   final String? project;
   final LogStore _store = LogStore();
   final List<StreamController<List<int>>> _clients = [];
 
   HttpServer? _server;
 
+  /// Starts the HTTP server and begins accepting log entries and SSE clients.
   Future<void> start() async {
     final router = Router()
       ..get('/', _ui)
@@ -49,6 +65,7 @@ class DevLogServer {
     _store.onClear(_broadcastClear);
   }
 
+  /// Stops the server and closes all open connections.
   Future<void> stop() async => _server?.close(force: true);
 
   // ── Route handlers ─────────────────────────────────────────────────────────

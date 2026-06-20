@@ -25,16 +25,25 @@ class DevLogServer {
       ..get('/', _ui)
       ..get('/ping', _ping)
       ..get('/logs', _getLogs)
-      ..get('/stream', _sseStream)
       ..post('/log', _postLog)
       ..post('/session', _postSession)
       ..delete('/logs', _clearLogs);
 
-    final handler = Pipeline()
+    final shelfHandler = Pipeline()
         .addMiddleware(_cors())
         .addHandler(router.call);
 
-    _server = await io.serve(handler, 'localhost', port);
+    // Use raw dart:io so we can set bufferOutput = false on the SSE response.
+    // Shelf's addStream never calls flush(), so events would sit in the buffer
+    // until the OS decided to send them. Direct dart:io lets us flush per-event.
+    _server = await HttpServer.bind('localhost', port);
+    _server!.listen((request) {
+      if (request.method == 'GET' && request.uri.path == '/stream') {
+        _handleSseRaw(request);
+      } else {
+        io.handleRequest(request, shelfHandler);
+      }
+    });
 
     _store.onLog(_broadcast);
     _store.onClear(_broadcastClear);
@@ -63,32 +72,6 @@ class DevLogServer {
         headers: {'content-type': 'application/json'},
       );
 
-  Response _sseStream(Request _) {
-    final ctrl = StreamController<List<int>>();
-    _clients.add(ctrl);
-
-    // History is fetched via GET /logs — SSE carries live events only.
-    // Keepalive ping so proxies don't close the connection.
-    final ping = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (!ctrl.isClosed) ctrl.add(utf8.encode(': ping\n\n'));
-    });
-
-    ctrl.onCancel = () {
-      _clients.remove(ctrl);
-      ping.cancel();
-    };
-
-    return Response.ok(
-      ctrl.stream,
-      headers: {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache',
-        'x-accel-buffering': 'no',
-        'connection': 'keep-alive',
-      },
-    );
-  }
-
   Future<Response> _postLog(Request request) async {
     try {
       final body = await request.readAsString();
@@ -115,6 +98,42 @@ class DevLogServer {
   Response _clearLogs(Request _) {
     _store.clear();
     return Response.ok('cleared');
+  }
+
+  // ── SSE — raw dart:io so we control flushing ───────────────────────────────
+
+  void _handleSseRaw(HttpRequest request) async {
+    final res = request.response;
+    res.headers
+      ..set('content-type', 'text/event-stream; charset=utf-8')
+      ..set('cache-control', 'no-cache')
+      ..set('x-accel-buffering', 'no')
+      ..set('access-control-allow-origin', '*');
+    // Disable Dart's output buffering — each write goes to the socket immediately.
+    res.bufferOutput = false;
+
+    final ctrl = StreamController<List<int>>(sync: true);
+    _clients.add(ctrl);
+
+    // When the client disconnects, close ctrl so the await-for loop below exits.
+    // ignore: discarded_futures
+    res.done.whenComplete(() { if (!ctrl.isClosed) ctrl.close(); });
+
+    final ping = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!ctrl.isClosed) ctrl.add(utf8.encode(': ping\n\n'));
+    });
+
+    try {
+      await for (final chunk in ctrl.stream) {
+        res.add(chunk);
+        await res.flush();
+      }
+    } catch (_) {}
+
+    ping.cancel();
+    _clients.remove(ctrl);
+    if (!ctrl.isClosed) unawaited(ctrl.close());
+    try { await res.close(); } catch (_) {}
   }
 
   // ── SSE broadcast ──────────────────────────────────────────────────────────

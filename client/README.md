@@ -95,6 +95,13 @@ Windows**. Not supported on Flutter Web.
 
 ---
 
+## Example
+
+A runnable Flutter app demonstrating all three integration options is in
+[`example/`](example/lib/main.dart).
+
+---
+
 ## Release safety
 
 All client code is guarded by:

@@ -567,7 +567,12 @@ function connect() {
   if (sse) { sse.close(); sse = null; }
   setStatus('connecting');
   sse = new EventSource('/stream');
-  sse.onopen = () => setStatus('connected');
+  sse.onopen = () => {
+    setStatus('connected');
+    // Fetch history on every (re)connect so events missed during a
+    // disconnect gap are filled in without requiring a full page reload.
+    loadHistory();
+  };
 
   sse.addEventListener('clear', () => {
     S.logs = []; S.seenIds = new Set(); S.buffer = [];
@@ -669,8 +674,8 @@ document.getElementById('new-badge').addEventListener('click', () => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-// Connect SSE first so no live events are missed, then fetch history.
-// ID-based dedup handles any overlap between the two.
+// loadHistory() runs immediately so history shows without waiting for SSE.
+// sse.onopen also calls it on every (re)connect to fill in any gap entries.
 connect();
 loadHistory();
 

@@ -10,7 +10,7 @@ running on `localhost`. All logging is a no-op in release builds.
 
 ```yaml
 # pubspec.yaml — add under dependencies (or dev_dependencies)
-dev_log_client: ^0.1.0
+dev_log_client: ^0.1.1
 ```
 
 Or use the one-command setup wizard from the server package:

@@ -29,7 +29,7 @@ Auto-picks a free port starting from **8181**. Open the URL it prints in your br
 ```yaml
 # pubspec.yaml
 dependencies:
-  dev_log_client: ^0.1.0
+  dev_log_client: ^0.1.1
 ```
 
 Or let the setup wizard do both steps:

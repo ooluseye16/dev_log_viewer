@@ -30,6 +30,7 @@ class DevLogServer {
 
   /// Optional project name shown in the web UI toolbar and browser tab.
   final String? project;
+  final DateTime startedAt = DateTime.now();
   final LogStore _store = LogStore();
   final List<StreamController<List<int>>> _clients = [];
 
@@ -45,9 +46,8 @@ class DevLogServer {
       ..post('/session', _postSession)
       ..delete('/logs', _clearLogs);
 
-    final shelfHandler = Pipeline()
-        .addMiddleware(_cors())
-        .addHandler(router.call);
+    final shelfHandler =
+        Pipeline().addMiddleware(_cors()).addHandler(router.call);
 
     // Use raw dart:io so we can set bufferOutput = false on the SSE response.
     // Shelf's addStream never calls flush(), so events would sit in the buffer
@@ -74,6 +74,7 @@ class DevLogServer {
         jsonEncode({
           'port': port,
           'status': 'ok',
+          'startedAt': startedAt.toIso8601String(),
           if (project != null) 'project': project,
         }),
         headers: {'content-type': 'application/json'},
@@ -134,7 +135,9 @@ class DevLogServer {
 
     // When the client disconnects, close ctrl so the await-for loop below exits.
     // ignore: discarded_futures
-    res.done.whenComplete(() { if (!ctrl.isClosed) ctrl.close(); });
+    res.done.whenComplete(() {
+      if (!ctrl.isClosed) ctrl.close();
+    });
 
     final ping = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!ctrl.isClosed) ctrl.add(utf8.encode(': ping\n\n'));
@@ -150,7 +153,9 @@ class DevLogServer {
     ping.cancel();
     _clients.remove(ctrl);
     if (!ctrl.isClosed) unawaited(ctrl.close());
-    try { await res.close(); } catch (_) {}
+    try {
+      await res.close();
+    } catch (_) {}
   }
 
   // ── SSE broadcast ──────────────────────────────────────────────────────────

@@ -42,7 +42,16 @@ const String kLogViewerHtml = r'''
     .filter-btns{display:flex;gap:3px;flex-wrap:wrap}
     .fbtn{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'SF Mono',Consolas,monospace;letter-spacing:.2px}
     .fbtn:hover{color:var(--text);border-color:var(--muted)}
-    .fbtn.active[data-tag="ALL"]   {color:var(--text);border-color:var(--muted);background:rgba(139,148,158,.12)}
+    /* Fallback for "ALL" and for dynamically-generated tags with no dedicated
+       colour below — lower specificity than the [data-tag="X"] rules, so
+       those still win for tags that do have one. --tag-rgb is set per-button
+       in JS (ensureTag) for generated tags; unset on ALL/level buttons, so
+       they fall through to the --text/--muted defaults below. */
+    .fbtn.active{
+      color:rgb(var(--tag-rgb,230,237,243));
+      border-color:rgb(var(--tag-rgb,139,148,158));
+      background:rgba(var(--tag-rgb,139,148,158),.12);
+    }
     .fbtn.active[data-tag="API"]   {color:var(--blue);border-color:var(--blue);background:rgba(88,166,255,.1)}
     .fbtn.active[data-tag="AUTH"]  {color:var(--green);border-color:var(--green);background:rgba(63,185,80,.1)}
     .fbtn.active[data-tag="NOTIF"] {color:var(--purple);border-color:var(--purple);background:rgba(210,168,255,.1)}
@@ -108,6 +117,11 @@ const String kLogViewerHtml = r'''
     .jn{color:var(--orange)}
     .jb{color:var(--purple)}
     .jz{color:var(--muted)}
+
+    /* Sensitive values — masked by default, click to reveal */
+    .redacted{cursor:pointer;border-bottom:1px dotted var(--muted)}
+    .redacted:hover{background:rgba(255,255,255,.08)}
+    .redacted.revealed{border-bottom-style:solid;border-bottom-color:var(--red)}
 
     /* HTTP method colours */
     .m-get   {color:var(--green);font-weight:700}
@@ -198,6 +212,7 @@ const S = {
   selectedLevel: 'all',
   search: '',
   knownTags: [],
+  tagColors: new Map(), // tag -> "R,G,B" for generated (tag-OTHER) tags
   paused: false,
   buffer: [],          // entries received while paused
 };
@@ -206,16 +221,44 @@ const S = {
 const esc = s => String(s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+// ── Sensitive-field masking ────────────────────────────────────────────────────
+// Values for these keys render masked by default; click to reveal, or use the
+// entry's Copy button which always copies the real value (entry.body is never
+// mutated — only the rendered HTML is masked).
+const SENSITIVE_KEYS = new Set([
+  'password','pin','token','authorization','access_token','refresh_token','client_secret','cvv',
+]);
+const attrEsc = s => s.replace(/"/g, '&quot;');
+
 // ── JSON syntax highlighter ───────────────────────────────────────────────────
 // Escape &, <, > only (not ") so JSON quotes survive the token regex.
 function syntaxHighlight(json) {
   const safe = json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let pendingSensitive = false;
   return safe.replace(
     /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
     m => {
-      if (m.startsWith('"')) return /:$/.test(m) ? `<span class="jk">${m}</span>` : `<span class="js">${m}</span>`;
-      if (m==='true'||m==='false') return `<span class="jb">${m}</span>`;
+      if (m.startsWith('"')) {
+        const keyMatch = m.match(/^"(.*)"\s*:$/);
+        if (keyMatch) {
+          pendingSensitive = SENSITIVE_KEYS.has(keyMatch[1].toLowerCase());
+          return `<span class="jk">${m}</span>`;
+        }
+        if (pendingSensitive) {
+          pendingSensitive = false;
+          const masked = '"••••••••"';
+          return `<span class="js redacted" data-real="${attrEsc(m)}" data-masked="${attrEsc(masked)}">${masked}</span>`;
+        }
+        return `<span class="js">${m}</span>`;
+      }
+      const wasSensitive = pendingSensitive;
+      pendingSensitive = false;
+      if (m==='true'||m==='false') {
+        if (wasSensitive) return `<span class="jb redacted" data-real="${attrEsc(m)}" data-masked="••••••••">••••••••</span>`;
+        return `<span class="jb">${m}</span>`;
+      }
       if (m==='null') return `<span class="jz">${m}</span>`;
+      if (wasSensitive) return `<span class="jn redacted" data-real="${attrEsc(m)}" data-masked="••••••••">••••••••</span>`;
       return `<span class="jn">${m}</span>`;
     }
   );
@@ -289,6 +332,26 @@ function tagClass(tag) {
   return known.includes(tag) ? `tag-${tag}` : 'tag-OTHER';
 }
 
+// ── Colour assignment for tags with no dedicated CSS class ───────────────────
+// Deterministic hash → one of the existing accent colours, so a given tag
+// always renders the same colour everywhere (badge + filter chip), without
+// needing a hardcoded CSS rule per possible tag string.
+const TAG_PALETTE = ['88,166,255','63,185,80','255,166,87','210,168,255','210,153,34','121,192,255','86,211,100'];
+
+function hashTag(tag) {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) | 0;
+  return Math.abs(h) % TAG_PALETTE.length;
+}
+
+// Returns an "R,G,B" string for tags rendered with the generic tag-OTHER
+// class, or null for tags that already have a dedicated CSS colour.
+function tagRgb(tag) {
+  if (tagClass(tag) !== 'tag-OTHER') return null;
+  if (!S.tagColors.has(tag)) S.tagColors.set(tag, TAG_PALETTE[hashTag(tag)]);
+  return S.tagColors.get(tag);
+}
+
 function methodClass(m) {
   return ({GET:'m-get',POST:'m-post',PUT:'m-put',DELETE:'m-delete',PATCH:'m-patch'})[m] || 'm-other';
 }
@@ -306,6 +369,41 @@ function parseApi(msg) {
   if (res) return { kind:'res', status:+res[1], url:res[2], meta: res[3] ?? null };
   if (msg.startsWith('CACHE ')||msg.startsWith('RETRY ')) return { kind:'meta' };
   return null;
+}
+
+// ── Copy-to-clipboard text ────────────────────────────────────────────────────
+// For API entries, reconstructs a clean curl-able summary (arrow line + the
+// real JSON body), instead of just the bare "--> POST url" with no body that
+// entry.message alone would give you.
+function buildCopyText(entry) {
+  const isApi = entry.tag === 'API' || entry.tag.startsWith('ERR:API');
+  if (!isApi) {
+    return [entry.tag, entry.timestamp, entry.message, entry.error, entry.stackTrace]
+      .filter(Boolean).join('\n');
+  }
+
+  const p = entry._parsed || parseApi(entry.message);
+  const lines = [];
+
+  if (p?.kind === 'req') {
+    lines.push(`--> ${p.method} ${p.url}`);
+    const sections = [];
+    if (entry.body?.query) sections.push(['Query', entry.body.query]);
+    if (entry.body?.body)  sections.push(['Body',  entry.body.body]);
+    sections.forEach(([label, data]) => {
+      if (sections.length > 1) lines.push(`${label}:`);
+      lines.push(JSON.stringify(data, null, 2));
+    });
+  } else if (p?.kind === 'res') {
+    const isErr = entry.tag.startsWith('ERR');
+    lines.push(`${isErr ? 'ERR ' : ''}${p.status} <-- ${p.url}`);
+    if (entry.body?.data != null) lines.push(JSON.stringify(entry.body.data, null, 2));
+    if (entry.error) lines.push(entry.error);
+  } else {
+    lines.push(entry.message);
+  }
+
+  return lines.join('\n');
 }
 
 // ── Build a JSON body section with optional search highlighting ───────────────
@@ -396,10 +494,13 @@ function buildEntry(entry, animate) {
   );
   const autoExpand = hasBody && !!bodyHasMatch;
 
+  const rgb = tagRgb(entry.tag);
+  const tagStyle = rgb ? ` style="color:rgb(${rgb});background:rgba(${rgb},.15)"` : '';
+
   el.innerHTML =
     `<div class="${hasBody ? 'entry-header clickable' : 'entry-header'}">` +
       `<span class="chevron">${hasBody ? '▶' : ''}</span>` +
-      `<span class="tag-badge ${tc}">${esc(entry.tag)}</span>` +
+      `<span class="tag-badge ${tc}"${tagStyle}>${esc(entry.tag)}</span>` +
       `<div class="entry-meta">` +
         `<span class="entry-ts">${fmtTime(entry.timestamp)}</span>` +
         `<span class="entry-msg">${headerHtml}</span>` +
@@ -422,7 +523,7 @@ function buildEntry(entry, animate) {
     e.stopPropagation();
     const ent = S.logs.find(l => l.id === e.currentTarget.dataset.id);
     if (!ent) return;
-    const txt = [ent.tag, ent.timestamp, ent.message, ent.error, ent.stackTrace].filter(Boolean).join('\n');
+    const txt = buildCopyText(ent);
     navigator.clipboard.writeText(txt).then(() => {
       const btn = e.currentTarget;
       btn.textContent = '✓';
@@ -489,6 +590,8 @@ function ensureTag(tag) {
   btn.className = 'fbtn';
   btn.dataset.tag = tag;
   btn.textContent = tag;
+  const rgb = tagRgb(tag);
+  if (rgb) btn.style.setProperty('--tag-rgb', rgb);
   btn.addEventListener('click', () => toggleTag(tag));
   document.getElementById('tag-filters').appendChild(btn);
 }
@@ -658,6 +761,21 @@ document.getElementById('search').addEventListener('input', e => {
   clearTimeout(_st);
   _st = setTimeout(rerenderAll, 160);
 });
+
+// Click-to-reveal for masked sensitive values. Delegated to the log
+// container since entries (and their .redacted spans) render dynamically.
+document.getElementById('log-container').addEventListener('click', e => {
+  const el = e.target.closest('.redacted');
+  if (!el) return;
+  e.stopPropagation();
+  const revealed = el.classList.toggle('revealed');
+  el.textContent = revealed ? el.dataset.real : el.dataset.masked;
+});
+
+// Wires up the static "ALL" tag button — dynamically-generated tag buttons
+// get their listener from ensureTag() instead, when they're first created.
+document.querySelectorAll('#tag-filters .fbtn').forEach(b =>
+  b.addEventListener('click', () => toggleTag(b.dataset.tag)));
 
 document.querySelectorAll('#level-filters .fbtn').forEach(b =>
   b.addEventListener('click', () => setLevel(b.dataset.level)));

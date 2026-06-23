@@ -76,7 +76,8 @@ class AppLog {
     Map<String, dynamic>? body,
   }) {
     if (!_kDebugMode) return;
-    dev.log('[ERR:$tag] $message', name: 'ERR:$tag', error: error, stackTrace: stack);
+    dev.log('[ERR:$tag] $message',
+        name: 'ERR:$tag', error: error, stackTrace: stack);
     LogForwarder.send(
       tag: 'ERR:$tag',
       message: message,

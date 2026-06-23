@@ -29,14 +29,24 @@ class DevLogInterceptor extends Interceptor {
   /// Key used to store the request start time in [RequestOptions.extra].
   static const _startKey = '_devLogStartMs';
 
+  // Bodies are sent unredacted — this is a localhost-only dev tool, and the
+  // whole point is being able to inspect (and copy) real request/response
+  // data while debugging. The viewer UI masks sensitive fields by default
+  // and reveals them on click, instead of destroying the value before it
+  // ever gets there.
+
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     options.extra[_startKey] = DateTime.now().millisecondsSinceEpoch;
 
     final body = <String, dynamic>{};
-    if (options.queryParameters.isNotEmpty) body['query'] = options.queryParameters;
+    if (options.queryParameters.isNotEmpty) {
+      body['query'] = options.queryParameters;
+    }
     if (options.data != null) {
-      try { body['body'] = jsonDecode(jsonEncode(options.data)); } catch (_) {}
+      try {
+        body['body'] = jsonDecode(jsonEncode(options.data));
+      } catch (_) {}
     }
 
     LogForwarder.send(

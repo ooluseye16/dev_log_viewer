@@ -1,0 +1,8 @@
+# Native platform scaffolding for the example app — needed to run it locally,
+# not useful inside the published package archive.
+example/android/
+example/ios/
+example/macos/
+example/linux/
+example/windows/
+example/web/

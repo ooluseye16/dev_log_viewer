@@ -14,7 +14,8 @@ import 'package:dev_log_viewer/dev_log_viewer.dart';
 String? _readProjectName() {
   try {
     final content = File('pubspec.yaml').readAsStringSync();
-    final match = RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(content);
+    final match =
+        RegExp(r'^name:\s*(\S+)', multiLine: true).firstMatch(content);
     return match?.group(1)?.trim();
   } catch (_) {
     return null;
@@ -41,7 +42,8 @@ void main(List<String> args) async {
           stdout.writeln('  Port $port in use — trying ${port + 1}…');
           port++;
         } else {
-          stderr.writeln('  Could not find a free port after $maxTries attempts.');
+          stderr.writeln(
+              '  Could not find a free port after $maxTries attempts.');
           exit(1);
         }
       } else {
@@ -55,12 +57,15 @@ void main(List<String> args) async {
   stdout.writeln('  $label  →  http://localhost:$port');
   if (port != 8181) {
     stdout.writeln('');
-    stdout.writeln('  Non-default port. If your app uses auto-discovery (no port arg)');
-    stdout.writeln('  it will find this server automatically. Or pass the port explicitly:');
+    stdout.writeln(
+        '  Non-default port. If your app uses auto-discovery (no port arg)');
+    stdout.writeln(
+        '  it will find this server automatically. Or pass the port explicitly:');
     stdout.writeln('    LogForwarder.init(port: $port)');
   }
   stdout.writeln('');
-  stdout.writeln('  Open the URL in your browser, then start your Flutter app.');
+  stdout
+      .writeln('  Open the URL in your browser, then start your Flutter app.');
   stdout.writeln('  Press Ctrl+C to stop.');
   stdout.writeln('');
 

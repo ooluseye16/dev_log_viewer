@@ -22,7 +22,8 @@ void main(List<String> args) async {
 
   final pubspec = pubspecFile.readAsStringSync();
   final projectName = _extract(pubspec, 'name') ?? 'your_app';
-  final isFlutter = pubspec.contains('sdk: flutter') || pubspec.contains("sdk: 'flutter'");
+  final isFlutter =
+      pubspec.contains('sdk: flutter') || pubspec.contains("sdk: 'flutter'");
   final hasDio = RegExp(r'^\s+dio:', multiLine: true).hasMatch(pubspec);
   final alreadyHasClient = pubspec.contains('dev_log_client');
 
@@ -44,20 +45,22 @@ void main(List<String> args) async {
 
   if (mainFile == null) {
     _warn('Could not find lib/main.dart — add this manually:');
-    _codeBlock("import 'package:dev_log_client/dev_log_client.dart';\n\n// In main():\nLogForwarder.init();");
+    _codeBlock(
+        "import 'package:dev_log_client/dev_log_client.dart';\n\n// In main():\nLogForwarder.init();");
   } else {
     final original = mainFile.readAsStringSync();
 
     if (original.contains('LogForwarder.init')) {
       _ok('LogForwarder.init() already present in ${mainFile.path}');
     } else {
-      final patched = _patchMain(original);
+      final patched = _patchMain(original, projectName);
       if (patched != null) {
         mainFile.writeAsStringSync(patched);
         _ok('Patched ${mainFile.path}');
       } else {
         _warn('Could not auto-patch ${mainFile.path} — add this manually:');
-        _codeBlock("import 'package:dev_log_client/dev_log_client.dart';\n\n// First line of main():\nLogForwarder.init();");
+        _codeBlock(
+            "import 'package:dev_log_client/dev_log_client.dart';\n\n// First line of main():\nLogForwarder.init(project: '$projectName');");
       }
     }
   }
@@ -79,7 +82,8 @@ void main(List<String> args) async {
 
   // ── 5. Print remaining steps ─────────────────────────────────────────────────
   stdout.writeln('');
-  stdout.writeln('  ┌─ One remaining step ──────────────────────────────────────');
+  stdout.writeln(
+      '  ┌─ One remaining step ──────────────────────────────────────');
   if (hasDio) {
     stdout.writeln('  │');
     stdout.writeln('  │  Add to your Dio setup:');
@@ -89,7 +93,8 @@ void main(List<String> args) async {
     stdout.writeln('  │');
     stdout.writeln('  │  Log anything with:');
     stdout.writeln('  │');
-    stdout.writeln("  │    LogForwarder.send(tag: 'TAG', message: 'your message');");
+    stdout.writeln(
+        "  │    LogForwarder.send(tag: 'TAG', message: 'your message');");
     stdout.writeln('  │');
     stdout.writeln('  │  Or use AppLog for named shortcuts:');
     stdout.writeln('  │');
@@ -97,7 +102,8 @@ void main(List<String> args) async {
     stdout.writeln("  │    AppLog.error('NET', 'Request failed', error: e);");
   }
   stdout.writeln('  │');
-  stdout.writeln('  └───────────────────────────────────────────────────────────');
+  stdout.writeln(
+      '  └───────────────────────────────────────────────────────────');
   stdout.writeln('');
   stdout.writeln('  Then start the viewer in a terminal:');
   stdout.writeln('');
@@ -117,7 +123,7 @@ void _header() {
   stdout.writeln('');
 }
 
-void _ok(String msg)   => stdout.writeln('  ✓  $msg');
+void _ok(String msg) => stdout.writeln('  ✓  $msg');
 void _warn(String msg) => stdout.writeln('  ⚠  $msg');
 void _line(String msg) => stdout.writeln('  $msg');
 void _codeBlock(String code) {
@@ -127,6 +133,7 @@ void _codeBlock(String code) {
   }
   stdout.writeln('');
 }
+
 void _fail(String msg) {
   stderr.writeln('\n  ✗  $msg\n');
   exit(1);
@@ -150,36 +157,42 @@ File? _findMainDart() {
 /// Adds dev_log_client under the dependencies section.
 void _addClientDependency(File pubspecFile, String content) {
   // Prefer pub.dev style; adjust to git/path if needed before publishing.
-  const snippet = '  dev_log_client: ^0.1.0';
+  const snippet = '  dev_log_client: ^0.2.0';
 
   // Find the dependencies: block and insert there.
-  final depsMatch = RegExp(r'^dependencies:', multiLine: true).firstMatch(content);
+  final depsMatch =
+      RegExp(r'^dependencies:', multiLine: true).firstMatch(content);
   if (depsMatch != null) {
     final insertAt = content.indexOf('\n', depsMatch.end) + 1;
-    final patched = '${content.substring(0, insertAt)}$snippet\n${content.substring(insertAt)}';
+    final patched =
+        '${content.substring(0, insertAt)}$snippet\n${content.substring(insertAt)}';
     pubspecFile.writeAsStringSync(patched);
     return;
   }
 
   // No dependencies block — append one.
-  pubspecFile.writeAsStringSync('${content.trimRight()}\n\ndependencies:\n$snippet\n');
+  pubspecFile
+      .writeAsStringSync('${content.trimRight()}\n\ndependencies:\n$snippet\n');
 }
 
 /// Adds the import and LogForwarder.init() call to main.dart.
 /// Returns the patched content, or null if it couldn't be done safely.
-String? _patchMain(String content) {
+String? _patchMain(String content, String projectName) {
   // Arrow-syntax main (e.g. void main() => runApp(...)) — don't touch it.
   if (RegExp(r'void main\([^)]*\)\s*=>').hasMatch(content)) return null;
 
   const importLine = "import 'package:dev_log_client/dev_log_client.dart';";
+  final initLine = "LogForwarder.init(project: '$projectName');";
   String result = content;
 
   // ── Add import after the last existing import line ──────────────────────────
   if (!result.contains('dev_log_client')) {
-    final allImports = RegExp(r"^import .+;$", multiLine: true).allMatches(result).toList();
+    final allImports =
+        RegExp(r"^import .+;$", multiLine: true).allMatches(result).toList();
     if (allImports.isNotEmpty) {
       final end = result.indexOf('\n', allImports.last.end) + 1;
-      result = '${result.substring(0, end)}$importLine\n${result.substring(end)}';
+      result =
+          '${result.substring(0, end)}$importLine\n${result.substring(end)}';
     } else {
       result = '$importLine\n\n$result';
     }
@@ -191,15 +204,18 @@ String? _patchMain(String content) {
   if (ensureIdx != -1) {
     final semi = result.indexOf(';', ensureIdx);
     if (semi != -1) {
-      result = '${result.substring(0, semi + 1)}\n  LogForwarder.init();${result.substring(semi + 1)}';
+      result =
+          '${result.substring(0, semi + 1)}\n  $initLine${result.substring(semi + 1)}';
       return result;
     }
   }
 
   // Fallback: first line inside the main() body.
-  final mainMatch = RegExp(r'void main\([^)]*\)\s*(?:async\s*)?\{').firstMatch(result);
+  final mainMatch =
+      RegExp(r'void main\([^)]*\)\s*(?:async\s*)?\{').firstMatch(result);
   if (mainMatch != null) {
-    result = '${result.substring(0, mainMatch.end)}\n  LogForwarder.init();${result.substring(mainMatch.end)}';
+    result =
+        '${result.substring(0, mainMatch.end)}\n  $initLine${result.substring(mainMatch.end)}';
     return result;
   }
 

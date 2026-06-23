@@ -45,7 +45,7 @@ dev_log_setup
 Run from your Flutter/Dart project root. It:
 1. Detects your project type (Flutter, Dart, Dio)
 2. Adds `dev_log_client` to `pubspec.yaml`
-3. Patches `lib/main.dart` with `LogForwarder.init()`
+3. Patches `lib/main.dart` with `LogForwarder.init(project: '...')`
 4. Runs `pub get`
 5. Prints the one remaining manual step
 
@@ -56,14 +56,21 @@ Run from your Flutter/Dart project root. It:
 - **Real-time** via Server-Sent Events — no polling
 - **JSON pretty-print** with syntax highlighting for request/response bodies
 - **Deep search** across JSON keys AND values at any nesting depth
-- **Tag + level filters** — API, AUTH, NAV, STORE, ERR, or any custom tag
+- **Tag + level filters** — API, AUTH, NAV, STORE, ERR, or any custom tag,
+  each auto-assigned a consistent colour
+- **Sensitive values masked by default** — `password`, `pin`, `token`,
+  `authorization`, and similar keys render as `••••••••`; click to reveal
+- **Smart copy** — the copy button on an API entry reconstructs a clean
+  `--> METHOD url` / `CODE <-- url` summary with the real JSON body, always
+  unmasked regardless of the on-screen reveal state
 - **Request duration** shown on every response row (`· 42ms`)
 - **Hot-restart separators** — "Hot restarted at 14:23:01" divider in the log list
 - **Pause / resume** — freeze the live stream while you read; buffered entries flush on resume
 - **Collapse / expand all** — one click to tidy up expanded entries
 - **500-entry cap** — server and browser both trim oldest entries automatically
 - **Survives browser reload** — history served via `GET /logs`, live events via SSE
-- **Multi-project** — auto-discovers the right server on ports 8181–8185
+- **Multi-project** — discovery prefers the right server by project name and
+  recency when more than one is running on 8181–8185
 
 ---
 
@@ -77,7 +84,7 @@ Run from your Flutter/Dart project root. It:
 | `POST` | `/log` | Ingest a log entry |
 | `POST` | `/session` | Signal app start / hot restart |
 | `DELETE` | `/logs` | Clear all entries |
-| `GET` | `/ping` | Health check |
+| `GET` | `/ping` | Health check — also returns `port`, `project`, and `startedAt`, used by the client's discovery logic |
 
 ---
 

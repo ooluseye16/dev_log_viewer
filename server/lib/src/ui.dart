@@ -166,7 +166,7 @@ const String kLogViewerHtml = r'''
 <div id="toolbar">
   <div class="toolbar-top">
     <div class="brand"><span class="brand-icon">⬡</span> <span id="project-name">Dev Log Viewer</span></div>
-    <input type="search" id="search" placeholder="Search messages, JSON keys &amp; values…" autocomplete="off" spellcheck="false">
+    <input type="search" id="search" placeholder="Search messages, JSON keys &amp; values… (try key:value)" autocomplete="off" spellcheck="false">
     <div class="toolbar-actions">
       <span id="count-badge">0 entries</span>
       <span id="new-badge"></span>
@@ -273,11 +273,13 @@ function prettyJson(str) {
 }
 
 // ── Search highlighting ───────────────────────────────────────────────────────
-// Highlights `query` inside rendered HTML without touching tag attributes.
-// Splits on HTML tags and only replaces inside text nodes.
-function highlightSearch(html, query) {
-  if (!query) return html;
-  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi');
+// Highlights every term in `terms` inside rendered HTML without touching tag
+// attributes. Splits on HTML tags and only replaces inside text nodes.
+function highlightTerms(html, terms) {
+  const valid = (terms || []).filter(Boolean);
+  if (!valid.length) return html;
+  const re = new RegExp(
+    valid.map(t => t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'), 'gi');
   return html.replace(/(<[^>]*>|[^<]+)/g, part =>
     part.startsWith('<') ? part : part.replace(re, '<mark>$&</mark>')
   );
@@ -290,6 +292,27 @@ function searchJson(val, q) {
   return Object.entries(val).some(([k, v]) =>
     k.toLowerCase().includes(q) || searchJson(v, q)
   );
+}
+
+// Parses `key:value` search syntax, e.g. "isSettled:true" or "status: 200".
+// Key and value must each be a single non-whitespace token. Returns null for
+// plain free-text queries (no colon, or spaces around the key).
+function parseKV(q) {
+  const m = q.trim().match(/^([^\s:]+)\s*:\s*(\S+)$/);
+  return m ? { key: m[1], value: m[2] } : null;
+}
+
+// Recursively looks for a JSON key (case-insensitive) whose stringified value
+// matches `value` (case-insensitive). Works for strings, numbers, booleans —
+// anything JSON.stringify-able — since comparison is against String(v).
+function searchJsonKV(val, key, value) {
+  if (val === null || typeof val !== 'object') return false;
+  if (Array.isArray(val)) return val.some(v => searchJsonKV(v, key, value));
+  const lk = key.toLowerCase(), lv = value.toLowerCase();
+  return Object.entries(val).some(([k, v]) => {
+    if (k.toLowerCase() === lk && String(v).toLowerCase() === lv) return true;
+    return typeof v === 'object' && v !== null && searchJsonKV(v, key, value);
+  });
 }
 
 // ── Entry enrichment (pre-parse JSON bodies for fast search) ─────────────────
@@ -408,13 +431,15 @@ function buildCopyText(entry) {
 
 // ── Build a JSON body section with optional search highlighting ───────────────
 // dataOrStr can be a JS object/array (structured body) or a plain string.
-function jsonSection(label, dataOrStr, query) {
+// `terms` is an array of strings to highlight (plain query, or [key, value]
+// when the search box used key:value syntax).
+function jsonSection(label, dataOrStr, terms) {
   if (dataOrStr === null || dataOrStr === undefined || dataOrStr === '') return '';
   let pretty;
   if (typeof dataOrStr === 'string') {
     pretty = prettyJson(dataOrStr); // legacy: JSON embedded in message text
     if (!pretty) {
-      const content = highlightSearch(esc(dataOrStr), query);
+      const content = highlightTerms(esc(dataOrStr), terms);
       return label
         ? `<div class="body-section"><div class="body-label">${label}</div><pre class="body-pre">${content}</pre></div>`
         : `<div class="body-section"><pre class="body-pre">${content}</pre></div>`;
@@ -422,7 +447,7 @@ function jsonSection(label, dataOrStr, query) {
   } else {
     try { pretty = syntaxHighlight(JSON.stringify(dataOrStr, null, 2)); } catch { return ''; }
   }
-  const content = highlightSearch(pretty, query);
+  const content = highlightTerms(pretty, terms);
   return label
     ? `<div class="body-section"><div class="body-label">${label}</div><pre class="body-pre">${content}</pre></div>`
     : `<div class="body-section"><pre class="body-pre">${content}</pre></div>`;
@@ -444,6 +469,11 @@ function buildEntry(entry, animate) {
 
   enrichEntry(entry);
   const q = S.search;
+  // key:value syntax (e.g. "isSettled:true") highlights the key and value
+  // separately instead of the literal "key:value" string, which wouldn't
+  // appear anywhere in pretty-printed JSON (rendered as "key": value).
+  const kv = parseKV(q);
+  const hlTerms = kv ? [kv.key, kv.value] : (q ? [q] : []);
 
   const el = document.createElement('div');
   el.className = `entry level-${entry.level}${animate?' new-entry':''}`;
@@ -457,35 +487,41 @@ function buildEntry(entry, animate) {
     const p = entry._parsed || parseApi(entry.message);
     if (p?.kind === 'req') {
       headerHtml = `<span class="${methodClass(p.method)}">${esc(p.method)}</span> <span style="color:var(--cyan)">${esc(p.url)}</span>`;
-      bodyHtml += jsonSection('Query', entry.body?.query ?? null, q);
-      bodyHtml += jsonSection('Body',  entry.body?.body  ?? null, q);
+      bodyHtml += jsonSection('Query', entry.body?.query ?? null, hlTerms);
+      bodyHtml += jsonSection('Body',  entry.body?.body  ?? null, hlTerms);
     } else if (p?.kind === 'res') {
       const sc = statusClass(p.status);
       const metaHtml = p.meta ? ` <span class="duration-ms">${esc(p.meta)}</span>` : '';
       headerHtml = `<span class="${sc}" style="font-weight:700">${p.status}</span> <span style="color:var(--muted)">${esc(p.url)}</span>${metaHtml}`;
-      bodyHtml += jsonSection('Response', entry.body?.data ?? null, q);
+      bodyHtml += jsonSection('Response', entry.body?.data ?? null, hlTerms);
     } else {
       headerHtml = esc(entry.message.split('\n')[0]);
-      if (entry.body?.data != null) bodyHtml += jsonSection('Response', entry.body.data, q);
+      if (entry.body?.data != null) bodyHtml += jsonSection('Response', entry.body.data, hlTerms);
     }
   } else {
     const lines = entry.message.split('\n');
     headerHtml = esc(lines[0]);
     const rest = lines.slice(1).join('\n').trim();
-    bodyHtml += jsonSection('', rest, q);
+    bodyHtml += jsonSection('', rest, hlTerms);
   }
 
-  if (entry.error)      bodyHtml += `<div class="body-section"><div class="body-label">Error</div><pre class="body-pre" style="color:var(--red)">${highlightSearch(esc(entry.error), q)}</pre></div>`;
+  if (entry.error)      bodyHtml += `<div class="body-section"><div class="body-label">Error</div><pre class="body-pre" style="color:var(--red)">${highlightTerms(esc(entry.error), hlTerms)}</pre></div>`;
   if (entry.stackTrace) bodyHtml += `<div class="body-section"><div class="body-label">Stack trace</div><pre class="body-pre" style="color:var(--muted)">${esc(entry.stackTrace)}</pre></div>`;
 
   // Highlight search term in the entry header
-  headerHtml = highlightSearch(headerHtml, q);
+  headerHtml = highlightTerms(headerHtml, hlTerms);
 
   const hasBody = !!bodyHtml;
   // Auto-expand when the search match lives in the body (so the user sees it).
   // Falls back to raw-string search when JSON parse failed (e.g. Dart toString format).
   const ql = q.toLowerCase();
   const bodyHasMatch = q && hasBody && (
+    (kv && (
+      (entry.body    && searchJsonKV(entry.body,    kv.key, kv.value)) ||
+      (entry._jBody  && searchJsonKV(entry._jBody,  kv.key, kv.value)) ||
+      (entry._jData  && searchJsonKV(entry._jData,  kv.key, kv.value)) ||
+      (entry._jQuery && searchJsonKV(entry._jQuery, kv.key, kv.value))
+    )) ||
     (entry.body    && searchJson(entry.body,    ql)) ||
     (entry._jBody  && searchJson(entry._jBody,  ql)) ||
     (entry._jData  && searchJson(entry._jData,  ql)) ||
@@ -540,8 +576,20 @@ function matches(entry) {
   const tagOk = S.selectedTags.has('ALL') || S.selectedTags.has(entry.tag);
   const lvlOk = S.selectedLevel === 'all' || entry.level === S.selectedLevel;
   if (!tagOk || !lvlOk) return false;
+  if (!S.search) return true;
   const q = S.search.toLowerCase();
-  if (!q) return true;
+
+  enrichEntry(entry);
+
+  // key:value syntax, e.g. "isSettled:true" — matches a JSON key whose
+  // (stringified) value equals "true", instead of a literal substring search.
+  const kv = parseKV(S.search);
+  if (kv) {
+    if (entry.body    && searchJsonKV(entry.body,    kv.key, kv.value)) return true;
+    if (entry._jBody  && searchJsonKV(entry._jBody,  kv.key, kv.value)) return true;
+    if (entry._jData  && searchJsonKV(entry._jData,  kv.key, kv.value)) return true;
+    if (entry._jQuery && searchJsonKV(entry._jQuery, kv.key, kv.value)) return true;
+  }
 
   // Surface-level text matches
   if (entry.message.toLowerCase().includes(q)) return true;
@@ -550,7 +598,6 @@ function matches(entry) {
   if ((entry.stackTrace || '').toLowerCase().includes(q)) return true;
 
   // Deep JSON search — keys AND values at any nesting depth
-  enrichEntry(entry);
   if (entry.body    && searchJson(entry.body,    q)) return true;
   if (entry._jBody  && searchJson(entry._jBody,  q)) return true;
   if (entry._jData  && searchJson(entry._jData,  q)) return true;
